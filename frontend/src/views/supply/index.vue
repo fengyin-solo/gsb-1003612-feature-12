@@ -63,8 +63,11 @@
       </tbody>
     </table>
 
+    <SupplyLedger ref="ledgerRef" @changed="reload" />
+
     <footer class="page-foot">
       <span>共 {{ total }} 条物资储备记录</span>
+      <span v-if="noticeMessage" class="notice-text">{{ noticeMessage }}</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
@@ -79,25 +82,39 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { listCheckItems } from '@/api/supply-check'
+import SupplyLedger from '@/components/SupplyLedger.vue'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('supply')
 const columns = ["物资编号", "物资名称", "物资类别", "规格型号", "储备林场", "预警储备量", "实际储备量", "物资状态"]
 const actions = ["发起补充", "确认补充", "标记过期"]
 const statuses = ["充足", "偏低", "需补充", "已过期"]
-const stats = [{"label": "物资种类", "value": 0}, {"label": "需补充种类", "value": 0}, {"label": "过期种类", "value": 0}]
+const stats = ref([{"label": "物资种类", "value": 0}, {"label": "需补充种类", "value": 0}, {"label": "过期种类", "value": 0}, {"label": "台账待核查", "value": 0}])
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const noticeMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+const ledgerRef = ref<InstanceType<typeof SupplyLedger>>()
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
 )
+
+function refreshStats() {
+  const checkItems = listCheckItems()
+  stats.value = [
+    { label: "物资种类", value: rows.value.length },
+    { label: "需补充种类", value: rows.value.filter((row) => ['偏低', '需补充'].includes(String(row.status))).length },
+    { label: "过期种类", value: rows.value.filter((row) => String(row.status) === '已过期').length },
+    { label: "台账待核查", value: checkItems.filter((row) => String(row.status) === '待核查').length },
+  ]
+}
 
 function resetFilters() {
   filters.value = {}
@@ -114,11 +131,13 @@ function openCreate() {
 
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
+  noticeMessage.value = ''
   const result = applyAction(meta.key, Number(row.id), action)
   if (!result.ok) {
     errorMessage.value = result.message
     return
   }
+  noticeMessage.value = result.message
   reload()
 }
 
@@ -128,6 +147,8 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    refreshStats()
+    ledgerRef.value?.reload()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '物资储备列表读取失败'
   }

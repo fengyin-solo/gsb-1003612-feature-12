@@ -36,3 +36,19 @@ export type OverviewResult = {
   cards: { label: string; value: number }[]
   modules: { name: string; created: number; pending: number; abnormal: number }[]
 }
+
+// 班次检查批次：值班员多选本站通行车辆、收缴火种记录后整批提交。
+export type BatchSubmitInput = {
+  station: string
+  shift: string
+  action: string
+  operator: string
+  vehicleIds: number[]
+  fireIds: number[]
+}
+
+export type BatchSubmitResult = ActionResult & {
+  batch?: EntryRow
+  checkItem?: EntryRow
+  duplicated?: boolean
+}

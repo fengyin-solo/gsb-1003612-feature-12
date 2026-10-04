@@ -1,9 +1,14 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { createSupplyActionCheckItem } from '@/api/supply-check'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
+
+// 沿「检查站动作 -> 物资储备补给」梳理出的另一路联动：
+// 只要在任意页面对物资记录执行了这些动作，物资储备预警台账一并生成核查项（同物资同动作去重）。
+const SUPPLY_LEDGER_ACTIONS = ['发起补充', '确认补充', '标记过期']
 
 export function moduleMeta(key: string): ModuleMeta {
   const meta = MODULE_BY_KEY.get(key)
@@ -53,7 +58,15 @@ export function runAction(key: string, id: number, action: string): ActionResult
   const next = [...rows]
   next[index] = updated
   saveRows(key, next)
-  return { ok: true, message: `${meta.entity}已${action}，当前状态「${target}」` }
+  let message = `${meta.entity}已${action}，当前状态「${target}」`
+  // 物资储备台账联动：别的页面执行物资动作时，预警台账一并生成核查项；重复动作只保留一条。
+  if (key === 'supply' && SUPPLY_LEDGER_ACTIONS.includes(action)) {
+    const { row, duplicated } = createSupplyActionCheckItem({ supply: updated, action })
+    message += duplicated
+      ? `，台账已有核查项 ${String(row['核查编号'])}，不重复生成`
+      : `，物资储备预警台账已生成核查项 ${String(row['核查编号'])}`
+  }
+  return { ok: true, message }
 }
 
 export function resetModule(key: string): PageResult {
